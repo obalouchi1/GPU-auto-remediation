@@ -81,7 +81,7 @@ def ask_ai_for_remediation(issue):
         resp = ai_client.chat.completions.create(
             model=ai_deployment,
             messages=[
-                {"role": "system", "content": "You are a Linux GPU troubleshooting assistant. Output ONLY safe shell commands."},
+                {"role": "system", "content": "You are a Linux GPU troubleshooting assistant. Output ONLY safe shell commands. no reboot, shut down or delete or unsafe command"},
                 {"role": "user", "content": f"Fix this GPU issue safely: {issue}"}
             ],
             temperature=0
