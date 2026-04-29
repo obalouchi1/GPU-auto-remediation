@@ -3,7 +3,7 @@
 ================================================================================
 GPU AI Troubleshooting Agent
 ================================================================================
- 
+
 SUMMARY:
   Autonomous GPU health monitoring and remediation system that detects NVIDIA
   driver issues and automatically performs remediation. Integrates with:
@@ -11,7 +11,7 @@ SUMMARY:
   - Azure OpenAI GPT-4o for intelligent troubleshooting suggestions
   - Azure DevOps for issue tracking and escalation
   - Dedicated NVML library mismatch handler script
- 
+
 FEATURES:
   ✓ Real-time GPU health monitoring via nvidia-smi
   ✓ NVML library mismatch detection and automated remediation
@@ -21,10 +21,10 @@ FEATURES:
   ✓ Comprehensive logging to ~/gpu-ai-agent-logs/agent.log
   ✓ Azure Managed Identity authentication
   ✓ Configurable via environment variables
- 
+
 MAINTAINER:
   Omid Balouchi <obalouchi1@gmail.com>
- 
+
 VERSION: 1.0.0
 ================================================================================
 """
@@ -43,7 +43,6 @@ AI_DEPLOYMENT = os.getenv("AI_DEPLOYMENT", "gpt-4o")
 AI_API_VERSION = os.getenv("AI_API_VERSION", "2024-12-01-preview")
 ADO_ORG_URL = os.getenv("ADO_ORG_URL", "https://dev.azure.com/obalouchi")
 ADO_PROJECT = os.getenv("ADO_PROJECT", "default_project")
-MISMATCH_SCRIPT = os.getenv("MISMATCH_SCRIPT", os.path.expanduser("~/nvmlLibraryMismatch.sh"))
 
 LOG_DIR = os.path.expanduser("~/gpu-ai-agent-logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -121,27 +120,65 @@ def check_gpu():
     return None
 
 # -----------------------------
+# NVML Mismatch Remediation (Direct Python)
+# -----------------------------
+def remediate_nvml_mismatch():
+    """
+    Remediate NVIDIA NVML library mismatch by:
+    1. Get processes using /dev/nvidia*
+    2. Stop lightdm
+    3. Kill nvidia processes
+    4. Unload nvidia kernel modules
+    5. Restart lightdm
+    """
+    try:
+        # Get processes utilizing nvidia driver units
+        logging.info("Getting processes using NVIDIA devices...")
+        rc, procs_out, err = run_cmd("sudo lsof -w /dev/nvidia* 2>/dev/null | cut -f1 -d ' '")
+        procs = [p for p in procs_out.split('\n') if p and p != 'COMMAND']
+        
+        if procs:
+            # Stop lightdm
+            logging.info("Stopping lightdm service...")
+            run_cmd("sudo service lightdm stop 2>/dev/null")
+        
+        # Kill all processes using NV drivers
+        if procs:
+            logging.info(f"Killing {len(procs)} processes using NVIDIA drivers...")
+            for proc in procs:
+                logging.info(f"Killing: {proc}")
+                run_cmd(f"sudo pkill -f {proc}")
+        
+        # Unload NVIDIA kernel modules
+        logging.info("Unloading NVIDIA kernel modules...")
+        rc, mods_out, err = run_cmd("lsmod | grep nvidia | cut -f1 -d ' '")
+        mods = [m for m in mods_out.split('\n') if m]
+        
+        for mod in mods:
+            logging.info(f"Removing module: {mod}")
+            rc, out, err = run_cmd(f"sudo rmmod {mod} 2>/dev/null")
+            if rc != 0:
+                logging.warning(f"Failed to remove {mod} (may be in use): {err}")
+        
+        # Start lightdm service
+        logging.info("Restarting lightdm service...")
+        run_cmd("sudo service lightdm start 2>/dev/null")
+        
+        logging.info("NVML mismatch remediation completed")
+        return "FIXED: NVML library mismatch remediated (processes killed, modules unloaded)"
+        
+    except Exception as e:
+        logging.error(f"NVML remediation error: {e}")
+        return None
+
+# -----------------------------
 # Local remediation
 # -----------------------------
 def remediate_gpu(issue):
-    # NVML Library Mismatch - run the dedicated mismatch script
+    # NVML Library Mismatch - remediate directly in Python
     if "library mismatch" in issue:
-        logging.info("NVML library mismatch detected, running nvmlLibraryMismatch.sh...")
-        if not os.path.exists(MISMATCH_SCRIPT):
-            logging.error(f"Mismatch script not found: {MISMATCH_SCRIPT}")
-            return None
-        
-        # Make script executable
-        run_cmd(f"chmod +x {MISMATCH_SCRIPT}")
-        
-        # Run the mismatch remediation script (requires sudo)
-        rc, out, err = run_cmd(f"bash {MISMATCH_SCRIPT}", timeout=300)
-        if rc == 0:
-            logging.info("NVML mismatch script completed successfully")
-            return "FIXED: NVML library mismatch remediated (processes killed, modules unloaded, lightdm restarted)"
-        else:
-            logging.error(f"Mismatch script failed: {err}")
-            return None
+        logging.info("NVML library mismatch detected, starting remediation...")
+        return remediate_nvml_mismatch()
     
     if "missing" in issue or "communication" in issue:
         logging.info("Attempting driver reinstall...")
@@ -196,3 +233,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
