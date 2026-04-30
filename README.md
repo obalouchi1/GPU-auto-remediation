@@ -9,7 +9,8 @@
 ```bash
 # 1. Install dependencies
 pip install openai azure-identity
-
+python3 -m venv .venv
+source .venv/bin/activate
 # 2. Set environment variables (required)
 export AI_ENDPOINT="https://your-resource.openai.azure.com/"
 export AI_DEPLOYMENT="gpt-4o"
