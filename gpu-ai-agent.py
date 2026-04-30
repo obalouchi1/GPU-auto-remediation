@@ -35,6 +35,11 @@ import logging
 from openai import AzureOpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
+hardware_gpu_count = int(lspci | grep nvidia)
+if hardware_gpu_count > 0
+print "No GPU is detected exiting!"
+exit 0 
+
 # -----------------------------
 # User-configurable environment
 # -----------------------------
@@ -112,12 +117,12 @@ def check_gpu():
         if ecc_errors:
             return f"ECC errors detected: {ecc_errors}"
 
-    # Optional: check GPU count
-    gpu_count = out.count("Tesla") + out.count("A100") + out.count("V100")  # basic example
-    if gpu_count % 2 != 0:
-        return "Odd number of GPUs detected"
+  
+    hardware_gpu_count = int(lspci | grep nvidia)
+    detected_gpu_count = int(nvidia-smi --list-gpus)
 
-    return None
+if hardware_gpu_count > 0 and hardware_gpu_count != detected_gpu_count:
+    return "GPU count mismatch: hardware has X, driver detects Y"
 
 # -----------------------------
 # NVML Mismatch Remediation (Direct Python)
