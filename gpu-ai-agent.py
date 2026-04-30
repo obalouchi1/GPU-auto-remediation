@@ -108,22 +108,34 @@ def ask_ai_for_remediation(issue):
 # -----------------------------
 # GPU Health Checks
 # -----------------------------
+# -----------------------------
+# GPU Health Checks (Refined)
+# -----------------------------
 def check_gpu():
+    # 1. Check for physical existence
     if not os.path.exists("/usr/bin/nvidia-smi"):
+        logging.info("nvidia-smi missing")
         return "nvidia-smi missing"
     
-    rc, out, err = run_cmd("/usr/bin/nvidia-smi 2>&1")
-    if rc != 0 or "could not" in out.lower():
-        if "NVML" in err or "library" in err.lower() or "version" in err.lower():
-            return "nvidia library mismatch detected"
-        return "nvidia driver communication failure"
+    # 2. Capture nvidia-smi output and exit code
+    rc, smi_out, _ = run_cmd("/usr/bin/nvidia-smi 2>&1")
+    smi_lower = smi_out.lower()
 
-    if "ECC" in out:
-        ecc_errors = [line for line in out.splitlines() if "ECC" in line and not line.strip().endswith("0")]
-        if ecc_errors:
-            return f"ECC errors detected: {ecc_errors}"
+    # Specific Exit Status 9 handling
+    if rc == 9 and "couldn't communicate with the nvidia driver" in smi_lower:
+        logging.info("nvidia-smi exit status 9: driver communication failure")
+        return "nvidia-driver-exit-9"
 
-    # Fixed GPU count mismatch check
+    # General communication failure
+    if "couldn't communicate with the nvidia driver" in smi_lower:
+        logging.info("nvidia-smi cannot communicate with driver")
+        return "nvidia-driver-comm-failure"
+
+    # 3. NVML / Library Mismatch specific check
+    if "nvml" in smi_lower or "library" in smi_lower or "version" in smi_lower:
+        return "nvidia library mismatch detected"
+
+    # 4. Hardware vs Driver count check
     _, hw_c, _ = run_cmd("lspci | grep -i nvidia | wc -l")
     _, sw_c, _ = run_cmd("nvidia-smi --list-gpus | wc -l")
     h_count = int(hw_c) if hw_c.isdigit() else 0
@@ -131,8 +143,16 @@ def check_gpu():
 
     if h_count > 0 and h_count != s_count:
         return f"GPU count mismatch: hardware has {h_count}, driver detects {s_count}"
-    
+
+    # 5. Integration with your custom scripts
+    gpu_script = "/etc/azmonsandbox/custom_checks/check_gpu_status.sh" # Example path
+    if os.path.exists(gpu_script):
+        rc_custom, out_custom, _ = run_cmd(f"bash {gpu_script}")
+        if rc_custom != 0:
+            return f"Custom check failed: {out_custom}"
+
     return None
+
 
 # -----------------------------
 # NVML Mismatch Remediation
